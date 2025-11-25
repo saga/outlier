@@ -18,11 +18,13 @@ from pyod.models.copod import COPOD
 from pyod.models.auto_encoder import AutoEncoder
 from pyod.models.ocsvm import OCSVM
 from pyod.models.ecod import ECOD
+from pyod.models.hbos import HBOS
 
 # 导入深度学习模型
 try:
     from pyod.models.auto_encoder import AutoEncoder
     AUTOENCODER_AVAILABLE = True
+    print("AutoEncoder依赖缺失, 跳过AutoEncoder模型")
 except ImportError:
     AUTOENCODER_AVAILABLE = False
 # try:
@@ -630,14 +632,14 @@ def generate_markdown_report(results_df, X_test, y_test, feature_names, output_p
 ### 5.2 参数调优建议
 - **contamination**: 建议0.05-0.10
 - **n_neighbors (KNN/LOF)*: 建议设置为样本数1-5%
-- **n_estimators (Isolation Forest)**: 建议100～300
+- **n_estimators (Isolation Forest)**: 建议100-300
 
 """
 
-    with open(out_path, 'w', encoding = 'utf-8') as f:
+    with open(output_path, 'w', encoding = 'utf-8') as f:
         f.write(report)
 
-    print(f"\n Markdown 报告已生成 {output_path}")
+    print(f"\nMarkdown 报告已生成 {output_path}")
     return report
 
 def main():
