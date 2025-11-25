@@ -454,3 +454,189 @@ def plot_comparison_results(results_df, output_path='algorithm_comparison.png'):
     print(f"\n📊 图表已保存: {output_path}")
 
     return fig
+
+def generate_markdown_report(results_df, X_test, y_test, feature_names, output_path='anomaly_detection_report.md'):
+    """
+    生成 Markdown 格式的报告
+    """
+
+    report = f"""# 🏦 金融运营数据异常检测算法比较报告
+## Financial Operational Data Anomaly Detection Algorithm Comparison
+
+**生成时间:** {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+
+---
+
+## 1. 执行摘要 (Executive Summary)
+
+本报告针对金融运营数据 (非交易数据) 的多种异常检测场景，对比了 {len(results_df)} 种主流异常检测算法的性能表现。
+
+### 数据集特征
+- **样本数量:** {len(X_test)} (测试集)
+- **特征维度:** {len(feature_names)}
+- **异常比例:** {y_test.sum() / len(y_test) * 100:.2f}%
+- **数据类型:** 金融运营监控数据 (系统性能、数据质量、业务指标等)
+
+### 特征列表
+"""
+
+    for i, fname in enumerate(feature_names, 1):
+        report += f"{i}. `{fname}`\n"
+
+    report += "\n---\n\n## 2. 算法性能对比 (Algorithm Performance Comparison)\n\n"
+
+    # 排序并标注
+    results_sorted = results_df.sort_values('AUC-ROC', ascending=False)
+
+    report += "### 2.1 综合排名 (Overall Ranking)\n\n"
+    report += "| 排名 | 算法 | AUC-ROC | F1-Score | Precision | Recall |\n"
+    report += "|---|---|---|---|---|---|\n"
+
+    for idx, (_, row) in enumerate(results_sorted.iterrows(), 1):
+        medal = "🥇" if idx == 1 else "🥈" if idx == 2 else "🥉" if idx == 3 else f"{idx}"
+        report += f"| {medal} | **{row['Algorithm']}** | {row['AUC-ROC']:.4f} | {row['F1-Score']:.4f} | {row['Precision']:.4f} | {row['Recall']:.4f} |\n"
+
+    report += "\n### 2.2 详细性能指标 (Detailed Metrics)\n\n"
+    report += results_df.to_markdown(index=False, floatfmt=".4f")
+
+    # 最佳算法
+    best_algo = results_sorted.iloc[0]
+    report += f"\n\n### 2.3 推荐算法 (Recommended Algorithm)\n\n"
+    report += f"**🏆 最佳综合性能: {best_algo['Algorithm']}**\n"
+    report += f"- **AUC-ROC:** {best_algo['AUC-ROC']:.4f}\n"
+    report += f"- **F1-Score:** {best_algo['F1-Score']:.4f}\n"
+    report += f"- **Precision:** {best_algo['Precision']:.4f}\n"
+    report += f"- **Recall:** {best_algo['Recall']:.4f}\n"
+    report += f"- **训练时间:** {best_algo['Training Time (s)']:.2f} 秒\n"
+    report += f"- **预测时间:** {best_algo['Prediction Time (ms)']:.4f} 毫秒/样本\n"
+
+    report += "\n---\n\n## 3. 算法特点分析 (Algorithm Characteristics)\n\n"
+
+    algo_analysis = {
+        'Isolation Forest': {
+            '适用场景': '高维数据、大规模数据集、实时检测',
+            '优势': '训练速度快、内存效率高、对异常类型不敏感、可解释性好',
+            '劣势': '对局部异常检测不如基于密度的方法',
+            '推荐指数': '⭐⭐⭐⭐⭐',
+            '金融场景': '系统日志异常、API 性能监控、批处理作业监控'
+        },
+        'ECOD': {
+            '适用场景': '高维数据、无监督场景、快速部署',
+            '优势': '速度极快、无需调参、对高维数据友好',
+            '劣势': '对复杂的异常检测能力有限',
+            '推荐指数': '⭐⭐⭐⭐⭐',
+            '金融场景': '实时监控告警、数据质量检查、运维指标监控'
+        },
+        'COPOD': {
+            '适用场景': '多变量关联异常、离线数据',
+            '优势': '无需训练、速度快、可解释性强',
+            '劣势': '对复杂非线性关系检测有限',
+            '推荐指数': '⭐⭐⭐⭐',
+            '金融场景': '多系统关联异常、跨指标异常检测'
+        },
+        'LOF': {
+            '适用场景': '局部异常、密度变化区域',
+            '优势': '对局部异常敏感、适合非均匀分布',
+            '劣势': '计算复杂度高、对参数敏感',
+            '推荐指数': '⭐⭐⭐',
+            '金融场景': '用户行为异常、交易模式异常'
+        },
+        'KNN': {
+            '适用场景': '中小规模数据、局部异常',
+            '优势': '简单直观、无需训练',
+            '劣势': '对大规模数据性能差、对参数敏感',
+            '推荐指数': '⭐⭐⭐',
+            '金融场景': '小批量数据质量检查、离线分析'
+        },
+        'OCSVM': {
+            '适用场景': '清晰边界的异常、小样本场景',
+            '优势': '理论基础扎实、对噪声鲁棒',
+            '劣势': '训练慢、参数调优困难、不适合大规模数据',
+            '推荐指数': '⭐⭐⭐',
+            '金融场景': '关键业务指标监控、合规检查'
+        },
+        'PCA': {
+            '适用场景': '高维数据降维、线性相关异常',
+            '优势': '降维效果好、可解释性强',
+            '劣势': '只能检测线性模式异常',
+            '推荐指数': '⭐⭐⭐⭐',
+            '金融场景': '多指标综合监控、特征压缩'
+        },
+        'MCD': {
+            '适用场景': '多变量高斯分布数据',
+            '优势': '对离群点鲁棒、统计理论支撑',
+            '劣势': '假设数据符合高斯分布、计算复杂',
+            '推荐指数': '⭐⭐⭐',
+            '金融场景': '风险指标监控、稳态系统监控'
+        },
+        'HBOS': {
+            '适用场景': '快速筛选、大规模数据',
+            '优势': '速度极快、可解释性强',
+            '劣势': '假设特征独立、检测能力有限',
+            '推荐指数': '⭐⭐⭐⭐',
+            '金融场景': '初步筛选、实时预警'
+        }
+    }
+
+    for algo, analysis in algo_analysis.items():
+        if algo in results_df['Algorithm'].values:
+            report += f"\n### {algo}\n\n"
+            for key, value in analysis.items():
+                report += f"- **{key}:** {value}\n"
+
+    report += "\n---\n\n## 4. 生产环境部署建议 (Production Deployment Recommendations)\n\n"
+    report += """### 4.1 场景选择指南
+
+| 场景 | 推荐算法 | 理由 |
+|---|---|---|
+| **实时监控系统** | Isolation Forest, ECOD | 预测速度快，内存效率高 |
+| **批量离线分析** | LOF, COPOD | 检测精度高，适合深度分析 |
+| **高维数据** | ECOD, Isolation Forest, PCA | 对高维特征鲁棒性好 |
+| **局部异常检测** | LOF, KNN | 对密度变化敏感 |
+| **可解释性要求高** | COPOD, HBOS, Isolation Forest | 可提供特征贡献度 |
+| **大规模数据** | Isolation Forest, ECOD, HBOS | 可扩展性好 |
+
+### 4.2 混合策略建议
+
+针对金融运营数据的复杂性，建议采用**多算法集成策略**：
+
+1. **第一层：快速筛选**
+   - 使用 ECOD 或 HBOS 进行实时快速筛选
+   - 阈值设置偏宽松，确保高召回率
+
+2. **第二层：精确检测**
+   - 对第一层筛选出的可疑样本，使用 Isolation Forest 或 LOF 进行精确检测
+   - 平衡 Precision 和 Recall
+
+3. **第三层：专家验证**
+   - 高风险异常人工复核
+   - 持续标注以支持未来监督/半监督学习
+
+### 4.3 监控与调优
+
+- **定期评估:** 每月重新评估算法性能，根据数据分布变化调整
+- **A/B 测试:** 在生产环境中同时运行多个算法，对比效果
+- **阈值动态调整:** 根据业务容忍度和告警疲劳度动态调整阈值
+- **特征工程:** 持续优化特征选择和工程，提升检测效果
+
+---
+
+## 5. 技术实现要点 (Technical Implementation Notes)
+
+### 5.1 数据预处理
+```python
+# 标准化处理
+
+### 5.2 参数调优建议
+- **contamination**: 建议0.05-0.10
+- **n_neighbors (KNN/LOF)*: 建议设置为样本数1-5%
+- **n_estimators (Isolation Forest)**: 建议100～300
+
+"""
+
+    with open(out_path, 'w', encoding = 'utf-8') as f:
+        f.write(report)
+
+    print(f"\n Markdown 报告已生成 {output_path}")
+    return report
+
