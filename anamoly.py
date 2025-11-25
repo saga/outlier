@@ -640,3 +640,35 @@ def generate_markdown_report(results_df, X_test, y_test, feature_names, output_p
     print(f"\n Markdown 报告已生成 {output_path}")
     return report
 
+def main():
+    X, y, feature_names = generate_financial_operational_data( 
+        n_samples= 10000,
+        n_features=15,
+        contamination=0.05
+    )
+
+    scaler = StandardScaler()
+    X_scaled = scaler.fit_transform(X)
+
+    X_train, X_test, y_train, y_test = train_test_split(
+        X_scaled, y, test_size=0.3, random_state= 42, stratify=y
+    )
+
+    results_df = compare_algorithms(X_train, X_test, y_test, contamination= 0.05)
+
+    print(results_df.to_string(index=False))
+
+    plot_comparison_results(results_df, output_path = './comparison.png')
+
+    generate_markdown_report(
+        results_df,
+        X_test,
+        y_test,
+        feature_names,
+        output_path='./report.md'
+    )
+
+    return results_df, X_test, y_test
+
+if __name__ == "__main__":
+    results_df, X_test, y_test = main()
