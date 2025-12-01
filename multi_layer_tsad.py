@@ -321,6 +321,9 @@ def plot_results(series_data, labels, S1_norm, S2_norm, S_final, D_final, thresh
     axs[3].legend(loc='upper left')
     axs[3].grid(True, linestyle='--', alpha=0.6)
 
+    output_file = 'anomaly_detection_result.png'
+    plt.savefig(output_file, dpi=300, bbox_inches='tight')
+    print(f"\n图表已保存")
     plt.tight_layout()
     plt.show()
 
@@ -361,8 +364,20 @@ if __name__ == "__main__":
         print(f"Precision: {final_precision:.4f}")
         print(f"Recall: {final_recall:.4f}")
         print("="*50)
+
+        results_dict = {
+            '真实异常点数量': np.sum(y_true_aligned),
+            'AUC-ROC': final_auc,
+            'F1-Score': final_f1,
+            'Precision': final_precision,
+            'Recall': final_recall
+        }
+        import json
+        with open('anomaly_detection_metrics.json', 'w', encoding='utf-8') as f:
+            json.dump(results_dict, f, indent=2, ensure_ascii=False)
+
     else:
-        print("\n未在对齐后的序列中检测到真实异常点，跳过性能评估。")
+        print("\n未在对齐后的序列中检测到真实异常点, 跳过性能评估. ")
 
     # --- 4. 用图表显示结果 ---
     plot_results(series_data, true_labels, S1_norm, S2_norm, S_final, D_final, threshold, WINDOW_SIZE)
