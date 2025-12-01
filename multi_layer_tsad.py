@@ -9,6 +9,10 @@ import torch
 import torch.nn as nn
 from torch.utils.data import TensorDataset, DataLoader
 
+# 中文字体
+plt.rcParams['font.sans-serif'] = ['Arial Unicode MS', 'SimHei', 'STHeiti', 'DejaVu Sans']
+plt.rcParams['axes.unicode_minus'] = False
+
 # 设置随机种子以保证结果可复现性
 np.random.seed(42)
 torch.manual_seed(42)
@@ -16,7 +20,7 @@ torch.manual_seed(42)
 # --- 配置参数 ---
 FILE_NAME = "multi_layer_tsad.py"
 WINDOW_SIZE = 10  # 时间窗口长度 (L)
-N_FEATURES = 15    # 模拟的金融运营指标维度 (D)
+N_FEATURES = 10    # 模拟的金融运营指标维度 (D)
 CONTAMINATION = 0.05 # 预计的异常数据比例（用于阈值设定）
 
 # 融合权重: Alpha + Beta = 1
@@ -104,17 +108,22 @@ def generate_synthetic_data(length, n_features):
     # 基础数据：趋势 + 季节性 + 噪声
     trend = 0.005 * t.reshape(-1, 1) + np.sin(t / 20).reshape(-1, 1)
     noise = np.random.randn(length, n_features) * 0.4
-    data = trend * np.array([1, 1.5, 2, 0.8, 1.2]) + noise
     
-    # 模拟运营数据的基线偏移
-    data += np.array([50, 100, 80, 60, 90]).reshape(1, -1)
+    # 动态生成与n_features匹配的权重数组
+    trend_weights = np.linspace(0.8, 2.0, n_features)
+    data = trend * trend_weights + noise
+    
+    # 动态生成基线偏移（50-100之间均匀分布）
+    baseline_offsets = np.linspace(50, 100, n_features)
+    data += baseline_offsets.reshape(1, -1)
     
     # --- 插入异常 ---
     labels = np.zeros(length)
     
-    # 1. 插入点异常 (Feature 2 剧烈波动)
+    # 1. 插入点异常 (在第一个可用特征上剧烈波动)
     point_start, point_end = 250, 253
-    data[point_start:point_end, 2] += 15.0 
+    feature_idx = min(2, n_features -1) #使用Feature2或者最后一个
+    data[point_start:point_end, feature_idx] += 15.0 
     labels[point_start:point_end] = 1
     
     # 2. 插入集合异常 (Feature 0 持续上升)
@@ -122,12 +131,13 @@ def generate_synthetic_data(length, n_features):
     data[collective_start:collective_end, 0] += np.linspace(2, 6, 50) 
     labels[collective_start:collective_end] = 1
     
-    # 3. 插入另一个情境异常 (Feature 1 局部反向趋势)
+    # 3. 插入另一个情境异常 (在第二个特征上局部反向趋势)
     context_start, context_end = 400, 420
-    data[context_start:context_end, 1] -= np.linspace(3, 1, 20)
+    feature_idx2 = min(1, n_features -1)
+    data[context_start:context_end, feature_idx2] -= np.linspace(3, 1, 20)
     labels[context_start:context_end] = 1
     
-    print(f"原始序列长度: {length}, 异常点总数: {np.sum(labels)}")
+    print(f"原始序列长度: {length}, 特征维度：{n_features} 异常点总数: {np.sum(labels)}")
     
     return data, labels
 
@@ -270,7 +280,7 @@ def plot_results(series_data, labels, S1_norm, S2_norm, S_final, D_final, thresh
     
     # --- Plot 3: 最终融合分数 S_final ---
     axs[2].plot(time_index, S_final, label='S_final (融合分数)', color='purple')
-    axs[2].hlines(threshold, time_index, time_index[-1], color='red', linestyle='--', label=f'阈值 $\\phi$={threshold:.4f}')
+    axs[2].hlines(threshold, time_index[0], time_index[-1], color='red', linestyle='--', label=f'阈值 $\\phi$={threshold:.4f}')
     
     # 标记检测到的异常点 (D_final=1)
     detected_anomalies = time_index[D_final == 1]
