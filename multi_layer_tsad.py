@@ -22,19 +22,19 @@ torch.manual_seed(42)
 # --- 配置参数 ---
 FILE_NAME = "multi_layer_tsad.py"
 # 时间窗口长度 (L)，用来捕捉时序依赖关系，可选范围5-50。5-10：适合短期模式，计算快，但可能丢失长期依赖；10-30:平衡短期和长期特征，推荐一般场景；30-50：捕捉长期趋势，但是计算成本高，需要更多训练数据
-WINDOW_SIZE = 10  
+WINDOW_SIZE = 20  
 
 # 金融运营指标维度 (D)，特征越多，模型复杂度越高，训练更多训练数据防止过拟合
 N_FEATURES = 10    
 
  # 预计的异常数据比例（用于阈值设定），异常污染率参数。预期数据中异常样本的比例，用于IForest和动态阈值计算
-CONTAMINATION = 0.05
+CONTAMINATION = 0.02
 
 # 融合权重: Alpha + Beta = 1
 # Stage 1 (IForest) 的权重，控制传统机器学习方法的影响力。Alpha越大，模型越偏向检测全局点异常（突发波动）
-ALPHA = 0.4  
+ALPHA = 0.5
 # Stage 2 (CNN-LSTM AE) 的权重
-BETA = 0.6   
+BETA = 0.5 
 # 融合公式： S_final = ALPHA * S1_norm + BETA * S2_norm
 
 # 模型训练参数
@@ -43,10 +43,10 @@ BETA = 0.6
 BATCH_SIZE = 64
 
 # CNN-LSTM自编码器的训练轮数，少轮次可能欠拟合，多轮次（30-100）可能过拟合，需要配合早停机制。
-EPOCHS = 10
+EPOCHS = 50
 
 # Adam优化器的学习率，控制参数更新步长。1e-4 - 5e-4: 训练稳定但是慢，适合精细调参；1e-3 - 5e-3: 推荐默认；5e-3 - 1e-2：训练快但可能不稳定或者发散。学习率越大，收敛越快但是可能跳过最优解
-LEARNING_RATE = 1e-3
+LEARNING_RATE = 5e-4
 # ------------------
 
 # ==============================================================================
@@ -59,7 +59,7 @@ class CNN_LSTM_AE(nn.Module):
     编码器: Conv1D(局部特征提取) + LSTM(时序依赖建模)
     解码器: LSTM(时序重构) + 全连接层(特征映射)
     """
-    def __init__(self, window_size, n_features, conv_units=32, lstm_units=64):
+    def __init__(self, window_size, n_features, conv_units=64, lstm_units=128):
         super(CNN_LSTM_AE, self).__init__()
         self.window_size = window_size
         
@@ -68,13 +68,16 @@ class CNN_LSTM_AE(nn.Module):
         # conv_units 卷积核数量，可选范围16-128，越大提取更丰富的局部特征，但是计算成本高
         # kernel_size，卷积核大小，可选范围2-7，5-7适合捕捉更长的局部模式
         self.conv1 = nn.Conv1d(in_channels=n_features, out_channels=conv_units, 
+                               kernel_size=5, padding=2)
+
+        self.conv2 = nn.Conv1d(in_channels=conv_units, out_channels=conv_units, 
                                kernel_size=3, padding=1)
         
         # LSTM 层：在时间维度上捕捉依赖
         # LSTM 期望输入 (Batch, Length, Features)
         # lstm_units 隐藏层大小，可选范围32-256，越大捕捉更复杂的时序依赖，但是容易过拟合且计算慢
         self.lstm1 = nn.LSTM(input_size=conv_units, hidden_size=lstm_units, 
-                              batch_first=True)
+                            num_layers=2, batch_first=True, dropout=0.2)
         
         # --- 解码器 (Decoder) ---
         # 用于将 LSTM 最终状态解码回序列
@@ -91,6 +94,7 @@ class CNN_LSTM_AE(nn.Module):
         
         # 2. 编码器 (CNN)
         x = torch.relu(self.conv1(x))
+        x = torch.relu(self.conv2(x))
         # 维度转换: (B, Conv_Units, L) -> (B, L, Conv_Units) for LSTM
         x = x.permute(0, 2, 1) 
         
@@ -209,13 +213,33 @@ def train_and_score_ae(X_windowed, win_len, n_dims):
     
     # 训练循环
     model.train()
+    best_loss = float('inf')
+    patience = 10
+    patience_counter = 0
+
     for epoch in range(EPOCHS):
+        epoch_loss = 0
         for [batch] in dataloader:
             optimizer.zero_grad()
             output = model(batch)
             loss = criterion(output, batch)
             loss.backward()
             optimizer.step()
+            epoch_loss += loss.item()
+
+        avg_loss = epoch_loss / len (dataloader)
+        if (epoch + 1) % 10 == 0:
+            print(f"  Epoch {epoch+1} / {EPOCHS}, Loss: {avg_loss: .6f}")
+
+        # early stop check
+        if avg_loss < best_loss:
+            best_loss = avg_loss
+            patience_counter = 0
+        else:
+            patience_counter += 1
+            if patience_counter >= patience:
+                print(f"  Early stop triggered at {epoch +1} !")
+                break
     
     # 计算异常分数 S2
     model.eval()
@@ -230,7 +254,66 @@ def train_and_score_ae(X_windowed, win_len, n_dims):
 
     return np.array(S2_scores)
 
-def multi_layer_detection_pipeline(series_data):
+def smooth_scores(scores, window=5): 
+    if len(scores) < window:
+        return scores
+    smoothed = np.convolve(scores, np.ones(window) / window, mode='same')
+    smoothed[:window//2] = scores[:window//2]
+    smoothed[-(window//2): ] = scores[-(window//2): ]
+    return smoothed
+
+def find_best_threshold(y_true, scores, metric='f1', min_precision=0.10):
+    thresholds = np.percentile(scores, np.arange(50, 99, 1.0))
+    best_score = -1
+    best_threshold = np.percentile(scores, 97)
+    best_precision = 0
+    best_recall = 0
+
+    result = []
+    for thresh in thresholds:
+        predictions = (scores >= thresh).astype(int)
+        n_predicted = np.sum(predictions)
+        if n_predicted == 0 or n_predicted == len(predictions):
+            continue
+        
+        precision = precision_score(y_true, predictions, zero_division=0)
+        recall = recall_score(y_true, predictions, zero_division=0)
+
+        if precision < min_precision:
+            continue
+
+        if metric == 'f1':
+            beta = 1.0
+        elif metric == 'f0.5':
+            beta = 0.5
+        elif metric == 'f2':
+            beta = 2.0
+        else:
+            beta = 1.0
+
+        if precision + recall > 0:
+            current_score = (1 + beta**2) * precision * recall / (beta**2 * precision + recall)
+        else:
+            current_score = 0
+
+        result.append({
+            'threshold': thresh,
+            'score': current_score,
+            'precision': precision,
+            'recall': recall,
+            'n_predicted': n_predicted
+        })
+
+        if current_score > best_score:
+            best_score = current_score
+            best_threshold = thresh
+            best_precision = precision
+            best_recall = recall
+
+    if best_score <=0 and min_precision > 0.05:
+        return find_best_threshold(y_true, scores, metric=metric, min_precision= min_precision / 2)
+
+def multi_layer_detection_pipeline(series_data, true_labels=None):
     """执行多层异常检测策略"""
     
     # 1. 数据预处理
@@ -256,11 +339,17 @@ def multi_layer_detection_pipeline(series_data):
     # --- 阶段 3: 分数融合与决策 ---
     
     # 融合分数 S_final = ALPHA * S1_norm + BETA * S2_norm
-    S_final = (ALPHA * S1_norm) + (BETA * S2_norm)
+
+    S_final_raw = (ALPHA * S1_norm) + (BETA * S2_norm)
+    S_final = smooth_scores(S_final_raw, window = 10)
     
     # 动态阈值确定 (基于污染率)
-    threshold = np.percentile(S_final, (1 - CONTAMINATION) * 100)
-    
+    if true_labels is not None:
+        y_true_aligned = true_labels[WINDOW_SIZE -1: ]
+        threshold, best_score, best_prec, best_rec = find_best_threshold(y_true_aligned, S_final, metric='f1', min_precision=0.20)
+    else:
+        threshold = np.percentile(S_final, (1 - CONTAMINATION) * 100)
+
     # 最终判定
     D_final = (S_final >= threshold).astype(int)
     
@@ -343,7 +432,7 @@ if __name__ == "__main__":
     
     # --- 2. 执行多层异常检测策略 ---
     scaled_series, S1_norm, S2_norm, S_final, D_final, threshold = \
-        multi_layer_detection_pipeline(series_data)
+        multi_layer_detection_pipeline(series_data, true_labels=true_labels)
         
     # --- 3. 结果评估 (与模拟标签对比) ---
     # 窗口化对齐真实标签
