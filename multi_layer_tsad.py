@@ -257,9 +257,9 @@ def train_and_score_ae(X_windowed, win_len, n_dims):
 def smooth_scores(scores, window=5): 
     if len(scores) < window:
         return scores
-    smoothed = np.convolve(scores, np.ones(window) / window, mode='same')
+    smoothed = np.convolve(scores, np.ones(window)/window, mode='same')
     smoothed[:window//2] = scores[:window//2]
-    smoothed[-(window//2): ] = scores[-(window//2): ]
+    smoothed[-(window//2):] = scores[-(window//2):]
     return smoothed
 
 def find_best_threshold(y_true, scores, metric='f1', min_precision=0.10):
@@ -269,7 +269,7 @@ def find_best_threshold(y_true, scores, metric='f1', min_precision=0.10):
     best_precision = 0
     best_recall = 0
 
-    result = []
+    results = []
     for thresh in thresholds:
         predictions = (scores >= thresh).astype(int)
         n_predicted = np.sum(predictions)
@@ -296,7 +296,7 @@ def find_best_threshold(y_true, scores, metric='f1', min_precision=0.10):
         else:
             current_score = 0
 
-        result.append({
+        results.append({
             'threshold': thresh,
             'score': current_score,
             'precision': precision,
@@ -310,8 +310,8 @@ def find_best_threshold(y_true, scores, metric='f1', min_precision=0.10):
             best_precision = precision
             best_recall = recall
 
-    if best_score <=0 and min_precision > 0.05:
-        return find_best_threshold(y_true, scores, metric=metric, min_precision= min_precision / 2)
+    if best_score <= 0 and min_precision > 0.05:
+        return find_best_threshold(y_true, scores, metric=metric, min_precision=min_precision/2)
 
 def multi_layer_detection_pipeline(series_data, true_labels=None):
     """执行多层异常检测策略"""
@@ -341,12 +341,13 @@ def multi_layer_detection_pipeline(series_data, true_labels=None):
     # 融合分数 S_final = ALPHA * S1_norm + BETA * S2_norm
 
     S_final_raw = (ALPHA * S1_norm) + (BETA * S2_norm)
-    S_final = smooth_scores(S_final_raw, window = 10)
+    S_final = smooth_scores(S_final_raw, window=10)
     
     # 动态阈值确定 (基于污染率)
     if true_labels is not None:
-        y_true_aligned = true_labels[WINDOW_SIZE -1: ]
+        y_true_aligned = true_labels[WINDOW_SIZE - 1:]
         threshold, best_score, best_prec, best_rec = find_best_threshold(y_true_aligned, S_final, metric='f1', min_precision=0.20)
+        print(f"F1: {best_score:.4f}, Precision: {best_prec:.4f}, Recall: {best_rec:.4f}")
     else:
         threshold = np.percentile(S_final, (1 - CONTAMINATION) * 100)
 
