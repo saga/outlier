@@ -5,7 +5,6 @@ import matplotlib.pyplot as plt
 from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import roc_auc_score, f1_score, precision_score, recall_score
 from pyod.models.iforest import IForest
-from pyod.utils.utility import min_max_scaler
 import torch
 import torch.nn as nn
 from torch.utils.data import TensorDataset, DataLoader
@@ -17,7 +16,7 @@ torch.manual_seed(42)
 # --- 配置参数 ---
 FILE_NAME = "multi_layer_tsad.py"
 WINDOW_SIZE = 10  # 时间窗口长度 (L)
-N_FEATURES = 5    # 模拟的金融运营指标维度 (D)
+N_FEATURES = 15    # 模拟的金融运营指标维度 (D)
 CONTAMINATION = 0.05 # 预计的异常数据比例（用于阈值设定）
 
 # 融合权重: Alpha + Beta = 1
@@ -108,7 +107,7 @@ def generate_synthetic_data(length, n_features):
     data = trend * np.array([1, 1.5, 2, 0.8, 1.2]) + noise
     
     # 模拟运营数据的基线偏移
-    data += np.array().reshape(1, -1)
+    data += np.array([50, 100, 80, 60, 90]).reshape(1, -1)
     
     # --- 插入异常 ---
     labels = np.zeros(length)
@@ -157,6 +156,15 @@ def preprocess_data(series_data, window_size):
 # ==============================================================================
 # 阶段 3: 融合与决策
 # ==============================================================================
+
+def min_max_scaler(scores):
+    """对异常分数进行Min-Max归一化处理到[0, 1]区间"""
+    min_val = np.min(scores)
+    max_val = np.max(scores)
+    if max_val - min_val < 1e-10:
+        return np.zeros_like(scores)
+
+    return (scores - min_val) / (max_val - min_val)
 
 def train_and_score_ae(X_windowed, win_len, n_dims):
     """训练 PyTorch CNN-LSTM AE 并计算重构误差 S2"""
@@ -242,46 +250,46 @@ def plot_results(series_data, labels, S1_norm, S2_norm, S_final, D_final, thresh
     fig, axs = plt.subplots(4, 1, figsize=(18, 15), sharex=True)
     
     # --- Plot 1: 原始数据 (仅显示 Feature 0 作为代表) ---
-    axs.plot(time_index, series_aligned[:, 0], label='Feature 0 (原始数据)', color='blue', alpha=0.7)
+    axs[0].plot(time_index, series_aligned[:, 0], label='Feature 0 (原始数据)', color='blue', alpha=0.7)
     
     # 标记真实异常点
     true_anomalies = time_index[y_true_aligned == 1]
     if len(true_anomalies) > 0:
-        axs.scatter(true_anomalies, series_aligned[true_anomalies, 0], color='red', marker='o', s=10, label='Ground Truth Anomalies')
+        axs[0].scatter(true_anomalies, series_aligned[true_anomalies, 0], color='red', marker='o', s=10, label='Ground Truth Anomalies')
         
-    axs.set_title(f'1. Feature 0 原始序列及真实异常点 (L={len(series_aligned)})')
-    axs.legend()
-    axs.grid(True, linestyle='--', alpha=0.6)
+    axs[0].set_title(f'1. Feature 0 原始序列及真实异常点 (L={len(series_aligned)})')
+    axs[0].legend()
+    axs[0].grid(True, linestyle='--', alpha=0.6)
     
     # --- Plot 2: 归一化的 S1 和 S2 分数 ---
-    axs.plot(time_index, S1_norm, label=f'S1 (IForest, $\\alpha$={ALPHA})', color='green', alpha=0.7)
-    axs.plot(time_index, S2_norm, label=f'S2 (CNN-LSTM AE, $\\beta$={BETA})', color='orange', alpha=0.7)
-    axs.set_title('2. 阶段性归一化异常分数 ($S_1$ vs $S_2$)')
-    axs.legend()
-    axs.grid(True, linestyle='--', alpha=0.6)
+    axs[1].plot(time_index, S1_norm, label=f'S1 (IForest, $\\alpha$={ALPHA})', color='green', alpha=0.7)
+    axs[1].plot(time_index, S2_norm, label=f'S2 (CNN-LSTM AE, $\\beta$={BETA})', color='orange', alpha=0.7)
+    axs[1].set_title('2. 阶段性归一化异常分数 ($S_1$ vs $S_2$)')
+    axs[1].legend()
+    axs[1].grid(True, linestyle='--', alpha=0.6)
     
     # --- Plot 3: 最终融合分数 S_final ---
-    axs.plot(time_index, S_final, label='S_final (融合分数)', color='purple')
-    axs.hlines(threshold, time_index, time_index[-1], color='red', linestyle='--', label=f'阈值 $\\phi$={threshold:.4f}')
+    axs[2].plot(time_index, S_final, label='S_final (融合分数)', color='purple')
+    axs[2].hlines(threshold, time_index, time_index[-1], color='red', linestyle='--', label=f'阈值 $\\phi$={threshold:.4f}')
     
     # 标记检测到的异常点 (D_final=1)
     detected_anomalies = time_index[D_final == 1]
     if len(detected_anomalies) > 0:
-        axs.scatter(detected_anomalies, S_final[detected_anomalies], color='red', marker='x', s=50, label='检测到的异常点')
+        axs[2].scatter(detected_anomalies, S_final[detected_anomalies], color='red', marker='x', s=50, label='检测到的异常点')
         
-    axs.set_title(f'3. 最终融合异常分数 $S_{{final}}$ 及动态阈值')
-    axs.legend()
-    axs.grid(True, linestyle='--', alpha=0.6)
+    axs[2].set_title(f'3. 最终融合异常分数 $S_{{final}}$ 及动态阈值')
+    axs[2].legend()
+    axs[2].grid(True, linestyle='--', alpha=0.6)
 
     # --- Plot 4: 结果对比 (真实标签 vs 检测标签) ---
-    axs.plot(time_index, y_true_aligned, label='真实标签 (1=异常)', color='red', alpha=0.6)
-    axs.plot(time_index, D_final * 0.9, label='检测标签 (0.9=异常)', color='blue', linestyle='--')
-    axs.set_yticks([0, 0.9])
-    axs.set_yticklabels(['正常 (0)', '异常 (1)'])
-    axs.set_title('4. 真实标签与检测结果对比')
-    axs.set_xlabel('时间步 (Time Step)')
-    axs.legend(loc='upper left')
-    axs.grid(True, linestyle='--', alpha=0.6)
+    axs[3].plot(time_index, y_true_aligned, label='真实标签 (1=异常)', color='red', alpha=0.6)
+    axs[3].plot(time_index, D_final * 0.9, label='检测标签 (0.9=异常)', color='blue', linestyle='--')
+    axs[3].set_yticks([0, 0.9])
+    axs[3].set_yticklabels(['正常 (0)', '异常 (1)'])
+    axs[3].set_title('4. 真实标签与检测结果对比')
+    axs[3].set_xlabel('时间步 (Time Step)')
+    axs[3].legend(loc='upper left')
+    axs[3].grid(True, linestyle='--', alpha=0.6)
 
     plt.tight_layout()
     plt.show()
