@@ -229,7 +229,7 @@ def train_and_score_ae(X_windowed, win_len, n_dims):
 
         avg_loss = epoch_loss / len (dataloader)
         if (epoch + 1) % 10 == 0:
-            print(f"  Epoch {epoch+1} / {EPOCHS}, Loss: {avg_loss: .6f}")
+            print(f"  Epoch {epoch+1}/{EPOCHS}, Loss: {avg_loss:.6f}")
 
         # early stop check
         if avg_loss < best_loss:
@@ -312,6 +312,8 @@ def find_best_threshold(y_true, scores, metric='f1', min_precision=0.10):
 
     if best_score <= 0 and min_precision > 0.05:
         return find_best_threshold(y_true, scores, metric=metric, min_precision=min_precision/2)
+
+    return best_threshold, best_score, best_precision, best_recall
 
 def multi_layer_detection_pipeline(series_data, true_labels=None):
     """执行多层异常检测策略"""
