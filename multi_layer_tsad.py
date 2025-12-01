@@ -19,17 +19,31 @@ torch.manual_seed(42)
 
 # --- 配置参数 ---
 FILE_NAME = "multi_layer_tsad.py"
-WINDOW_SIZE = 10  # 时间窗口长度 (L)
-N_FEATURES = 10    # 模拟的金融运营指标维度 (D)
-CONTAMINATION = 0.05 # 预计的异常数据比例（用于阈值设定）
+# 时间窗口长度 (L)，用来捕捉时序依赖关系，可选范围5-50。5-10：适合短期模式，计算快，但可能丢失长期依赖；10-30:平衡短期和长期特征，推荐一般场景；30-50：捕捉长期趋势，但是计算成本高，需要更多训练数据
+WINDOW_SIZE = 10  
+
+# 金融运营指标维度 (D)，特征越多，模型复杂度越高，训练更多训练数据防止过拟合
+N_FEATURES = 10    
+
+ # 预计的异常数据比例（用于阈值设定），异常污染率参数。预期数据中异常样本的比例，用于IForest和动态阈值计算
+CONTAMINATION = 0.05
 
 # 融合权重: Alpha + Beta = 1
-ALPHA = 0.4  # Stage 1 (IForest) 的权重
-BETA = 0.6   # Stage 2 (CNN-LSTM AE) 的权重
+# Stage 1 (IForest) 的权重，控制传统机器学习方法的影响力。Alpha越大，模型越偏向检测全局点异常（突发波动）
+ALPHA = 0.4  
+# Stage 2 (CNN-LSTM AE) 的权重
+BETA = 0.6   
+# 融合公式： S_final = ALPHA * S1_norm + BETA * S2_norm
 
-# 模型训练参数 (Stage 2)
+# 模型训练参数
+
+# 每批次训练的样本数量，可选范围16～256。16-32:训练慢，但是泛化能力强，适合数据量少的场景；32-64:平衡，推荐默认值；128-256:训练快，需要更多内存，适合大数据集
 BATCH_SIZE = 64
+
+# CNN-LSTM自编码器的训练轮数，少轮次可能欠拟合，多轮次（30-100）可能过拟合，需要配合早停机制。
 EPOCHS = 10
+
+# Adam优化器的学习率，控制参数更新步长。1e-4 - 5e-4: 训练稳定但是慢，适合精细调参；1e-3 - 5e-3: 推荐默认；5e-3 - 1e-2：训练快但可能不稳定或者发散。学习率越大，收敛越快但是可能跳过最优解
 LEARNING_RATE = 1e-3
 # ------------------
 
@@ -40,6 +54,8 @@ LEARNING_RATE = 1e-3
 class CNN_LSTM_AE(nn.Module):
     """
     CNN-LSTM 混合自编码器架构用于时间序列重构
+    编码器: Conv1D(局部特征提取) + LSTM(时序依赖建模)
+    解码器: LSTM(时序重构) + 全连接层(特征映射)
     """
     def __init__(self, window_size, n_features, conv_units=32, lstm_units=64):
         super(CNN_LSTM_AE, self).__init__()
@@ -47,17 +63,21 @@ class CNN_LSTM_AE(nn.Module):
         
         # --- 编码器 (Encoder) ---
         # Conv1d 提取局部特征: 输入 (Batch, Channels=Features, Length=Window_size)
+        # conv_units 卷积核数量，可选范围16-128，越大提取更丰富的局部特征，但是计算成本高
+        # kernel_size，卷积核大小，可选范围2-7，5-7适合捕捉更长的局部模式
         self.conv1 = nn.Conv1d(in_channels=n_features, out_channels=conv_units, 
                                kernel_size=3, padding=1)
         
         # LSTM 层：在时间维度上捕捉依赖
         # LSTM 期望输入 (Batch, Length, Features)
+        # lstm_units 隐藏层大小，可选范围32-256，越大捕捉更复杂的时序依赖，但是容易过拟合且计算慢
         self.lstm1 = nn.LSTM(input_size=conv_units, hidden_size=lstm_units, 
                               batch_first=True)
         
         # --- 解码器 (Decoder) ---
         # 用于将 LSTM 最终状态解码回序列
         # 输入大小是 lstm_units，因为它接收编码器的最终隐藏状态
+        # num_layers LSTM堆叠层数
         self.decoder_lstm = nn.LSTM(input_size=lstm_units, hidden_size=lstm_units, 
                                     num_layers=1, batch_first=True)
         
@@ -311,7 +331,9 @@ def plot_results(series_data, labels, S1_norm, S2_norm, S_final, D_final, thresh
 if __name__ == "__main__":
     
     # --- 1. 构造相关测试数据 ---
-    DATA_LENGTH = 1000
+    DATA_LENGTH = 5000
+    # 数据越多，训练越充分，建议DATA_LENGTH >= WINDOW_SIZE * 20 保证足够的窗口样本
+
     series_data, true_labels = generate_synthetic_data(DATA_LENGTH, N_FEATURES)
     
     # --- 2. 执行多层异常检测策略 ---
