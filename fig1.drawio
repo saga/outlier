@@ -1,49 +1,89 @@
 <mxfile host="app.diagrams.net">
-  <diagram name="分层混合异常检测整体框架">
-    <mxGraphModel dx="1220" dy="720" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="850" pageHeight="1100">
+  <diagram name="多层混合异常检测框架">
+    <mxGraphModel dx="1400" dy="820" grid="1" gridSize="10" guides="1" tooltips="1"
+      connect="1" arrows="1" fold="1" page="1" pageScale="1"
+      pageWidth="1200" pageHeight="800">
       <root>
         <mxCell id="0"/>
         <mxCell id="1" parent="0"/>
 
-        <!-- 输入 -->
-        <mxCell id="input" value="多维时间序列运营数据" style="rounded=1;whiteSpace=wrap;html=1;strokeWidth=1;" vertex="1" parent="1">
-          <mxGeometry x="40" y="200" width="180" height="60" as="geometry"/>
+        <!-- 左侧输入数据 -->
+        <mxCell id="data" value="金融运营数据&#xa;• API 性能指标&#xa;• 系统日志&#xa;• 数据质量度量&#xa;• OpenTelemetry&#xa;• 批处理作业状态"
+          style="rounded=1;whiteSpace=wrap;html=1;strokeWidth=1;"
+          vertex="1" parent="1">
+          <mxGeometry x="20" y="120" width="200" height="240" as="geometry"/>
         </mxCell>
 
-        <!-- 第一阶段 -->
-        <mxCell id="stage1" value="阶段一：全局快速筛选&#xa;(KNN 近邻距离)" style="rounded=1;whiteSpace=wrap;html=1;strokeWidth=1;" vertex="1" parent="1">
-          <mxGeometry x="260" y="180" width="220" height="100" as="geometry"/>
+        <!-- 数据预处理 -->
+        <mxCell id="prep" value="数据预处理&#xa;标准化 / 窗口化&#xa;L = 20, D = 15"
+          style="rounded=1;whiteSpace=wrap;html=1;strokeWidth=1;"
+          vertex="1" parent="1">
+          <mxGeometry x="260" y="190" width="200" height="100" as="geometry"/>
         </mxCell>
 
-        <!-- 第二阶段 -->
-        <mxCell id="stage2" value="阶段二：深度上下文建模&#xa;(GRU 自编码器)" style="rounded=1;whiteSpace=wrap;html=1;strokeWidth=1;" vertex="1" parent="1">
-          <mxGeometry x="540" y="180" width="220" height="100" as="geometry"/>
+        <!-- 阶段一 -->
+        <mxCell id="stage1" value="阶段一：快速初筛&#xa;IForest / KNN&#xa;• 全局点异常检测&#xa;• 计算复杂度低&#xa;• 延迟 &lt; 1 秒&#xa;输出：异常分数 S₁"
+          style="rounded=1;whiteSpace=wrap;html=1;strokeWidth=1;"
+          vertex="1" parent="1">
+          <mxGeometry x="500" y="100" width="260" height="180" as="geometry"/>
         </mxCell>
 
-        <!-- 第三阶段 -->
-        <mxCell id="stage3" value="阶段三：融合与决策&#xa;(加权融合 + 动态阈值)" style="rounded=1;whiteSpace=wrap;html=1;strokeWidth=1;" vertex="1" parent="1">
-          <mxGeometry x="820" y="180" width="260" height="100" as="geometry"/>
+        <!-- 阶段二 -->
+        <mxCell id="stage2" value="阶段二：深度上下文分析&#xa;CNN-LSTM / GRU-AE&#xa;• 时序特征提取&#xa;• 长期依赖建模&#xa;• 情境与集合异常感知&#xa;• GPU 加速训练&#xa;输出：重构误差 S₂"
+          style="rounded=1;whiteSpace=wrap;html=1;strokeWidth=1;"
+          vertex="1" parent="1">
+          <mxGeometry x="500" y="300" width="260" height="220" as="geometry"/>
+        </mxCell>
+
+        <!-- 融合决策 -->
+        <mxCell id="fusion" value="阶段三：融合决策&#xa;S = α·Norm(S₁) + (1−α)·Norm(S₂)&#xa;动态阈值 θ（污染率≈2%）&#xa;D = 1 if S ≥ θ else 0"
+          style="rounded=1;whiteSpace=wrap;html=1;strokeWidth=1;"
+          vertex="1" parent="1">
+          <mxGeometry x="820" y="200" width="320" height="160" as="geometry"/>
         </mxCell>
 
         <!-- 输出 -->
-        <mxCell id="output" value="异常检测结果" style="rounded=1;whiteSpace=wrap;html=1;strokeWidth=1;" vertex="1" parent="1">
-          <mxGeometry x="1130" y="200" width="160" height="60" as="geometry"/>
+        <mxCell id="output" value="输出结果&#xa;• 异常告警&#xa;• 可视化面板&#xa;• 性能指标"
+          style="rounded=1;whiteSpace=wrap;html=1;strokeWidth=1;"
+          vertex="1" parent="1">
+          <mxGeometry x="1180" y="200" width="200" height="120" as="geometry"/>
+        </mxCell>
+
+        <!-- 工程实现 -->
+        <mxCell id="engineer" value="工程实现基础设施&#xa;OpenTelemetry → Kafka → 异常检测模块 → 告警系统 → Data Lake → BI Dashboard"
+          style="rounded=1;whiteSpace=wrap;html=1;strokeWidth=1;dashed=1;"
+          vertex="1" parent="1">
+          <mxGeometry x="120" y="560" width="1000" height="80" as="geometry"/>
         </mxCell>
 
         <!-- 箭头 -->
-        <mxCell id="e1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;" edge="1" parent="1" source="input" target="stage1">
+        <mxCell edge="1" parent="1" source="data" target="prep"
+          style="endArrow=block;html=1;">
           <mxGeometry relative="1" as="geometry"/>
         </mxCell>
 
-        <mxCell id="e2" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;" edge="1" parent="1" source="stage1" target="stage2">
+        <mxCell edge="1" parent="1" source="prep" target="stage1"
+          style="endArrow=block;html=1;">
           <mxGeometry relative="1" as="geometry"/>
         </mxCell>
 
-        <mxCell id="e3" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;" edge="1" parent="1" source="stage2" target="stage3">
+        <mxCell edge="1" parent="1" source="prep" target="stage2"
+          style="endArrow=block;html=1;">
           <mxGeometry relative="1" as="geometry"/>
         </mxCell>
 
-        <mxCell id="e4" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;" edge="1" parent="1" source="stage3" target="output">
+        <mxCell edge="1" parent="1" source="stage1" target="fusion"
+          style="endArrow=block;html=1;">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+
+        <mxCell edge="1" parent="1" source="stage2" target="fusion"
+          style="endArrow=block;html=1;">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+
+        <mxCell edge="1" parent="1" source="fusion" target="output"
+          style="endArrow=block;html=1;">
           <mxGeometry relative="1" as="geometry"/>
         </mxCell>
 

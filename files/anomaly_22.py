@@ -7,8 +7,6 @@ Original file is located at
     https://colab.research.google.com/drive/1nRyRK1rwFnX4NQrSlk2kozKELzdd8R4T
 """
 
-!pip install pyod
-
 import numpy as np
 import pandas as pd
 import time
